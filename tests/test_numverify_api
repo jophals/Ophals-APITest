@@ -1,0 +1,119 @@
+import requests
+import unittest
+from unittest.mock import patch, MagicMock
+
+base_url = "https://apilayer.net/api/"
+mock_access_key = "mock_access_key"
+
+@patch("requests.get")
+class TestNumverifyAPI(unittest.TestCase):
+    
+    def test_validate_success(self, mock_get):
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {
+            "valid":True,
+            "number":"14158586273",
+            "local_format":"4158586273",
+            "international_format":"+14158586273",
+            "country_prefix":"+1",
+            "country_code":"US",
+            "country_name":"United States of America",
+            "location":"Novato",
+            "carrier":"AT&T Mobility LLC",
+            "line_type":"mobile",
+        }
+
+        query_params = {
+            "number": "14158586273"
+        }
+        validate_url = f"{base_url}validate?access_key={mock_access_key}"
+        response = requests.get(validate_url, params=query_params)
+
+        mock_get.assert_called_once_with(validate_url, params=query_params)        
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["valid"])
+        self.assertEqual(response.json()["number"], "14158586273")
+        self.assertEqual(response.json()["line_type"], "mobile")
+
+    def test_validate_fail_not_found(self, mock_get):
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {
+            "success": False,
+            "error": {
+                "code": 404,
+                "type": "404_not_found",
+                "info": "User requested a resource which does not exist."
+            }
+        }
+
+        query_params = {
+            "number": "1"
+        }
+        validate_url = f"{base_url}validate?access_key={mock_access_key}"
+        response = requests.get(validate_url, params=query_params)
+
+        mock_get.assert_called_once_with(validate_url, params=query_params)  
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["success"])
+        self.assertIn("error", response.json())
+        self.assertEqual(response.json()["error"]["code"], 404)
+
+    def test_validate_timeout_error(self, mock_get):
+        mock_get.side_effect = requests.exceptions.Timeout
+
+        with self.assertRaises(requests.exceptions.Timeout):
+            requests.get(f"{base_url}validate?access_key={mock_access_key}")
+
+    def test_countries_success(self, mock_get):
+        mock_get.return_value.status_code = 200
+
+        # abbreviating the response for the purposes of this test
+        mock_get.return_value.json.return_value = {
+            "US":{
+                "country_name":"United States",
+                "dialling_code":"+1"
+            },
+            "UY":{
+                "country_name":"Uruguay",
+                "dialling_code":"+598"
+            },
+            "VI":{
+                "country_name":"US Virgin Islands",
+                "dialling_code":"+1"
+            },
+        }
+
+        countries_url = f"{base_url}countries?access_key={mock_access_key}"
+        response = requests.get(countries_url)
+
+        mock_get.assert_called_once_with(countries_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("US", response.json())
+        self.assertIn("VI", response.json())
+        self.assertEqual(response.json()["US"]["country_name"], "United States")
+        self.assertEqual(response.json()["UY"]["dialling_code"], "+598")
+
+    def test_countries_fail_invalid_api(self, mock_get):
+        mock_get.return_value.status_code = 200
+        mock_get.return_value.json.return_value = {
+            "success": False,
+            "error": {
+                "code": 103,
+                "type": "invalid_api_function",
+                "info": "This API Function does not exist."
+            }
+        }
+
+        countries_url = f"{base_url}countries?access_key={mock_access_key}"
+        response = requests.get(countries_url)
+
+        mock_get.assert_called_once_with(countries_url)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["success"])
+        self.assertIn("error", response.json())
+        self.assertEqual(response.json()["error"]["code"], 103)
+        self.assertEqual(response.json()["error"]["info"], "This API Function does not exist.")
+
+
+if __name__ == "__main__":
+    unittest.main()
